@@ -8,10 +8,15 @@
 #include <curl/curl.h>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <uv.h>
+#include <variant>
 using namespace std;
+namespace LibuvCurlCpp {
+using request_options = std::unordered_map<std::string, std::variant<std::string, std::unordered_map<std::string, std::string>>>;
+
 class LibuvCurlCpp {
  public:
   struct HandleSocketData {
@@ -52,7 +57,7 @@ class LibuvCurlCpp {
     return size * nmemb;
   }
 
-  static void addDownload(std::string_view url, CURLM *curl_handle) {
+  static void addDownload(CURLM *curl_handle, request_options &options) {
     char filename[50];
     FILE *file;
     CURL *handle;
@@ -65,12 +70,26 @@ class LibuvCurlCpp {
       fprintf(stderr, "Error opening %s\n", filename);
       return;
     }
-
     handle = curl_easy_init();
+
+    if (options.find("method") != options.end() && get<string>(options["method"]) != "GET") {
+      curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, get<string>(options["method"]).c_str());
+    }
+    struct curl_slist *chunk = NULL;
+    if (options.find("headers") != options.end() && !get<std::unordered_map<std::string, std::string>>(options["headers"]).empty()) {
+      for (auto &i : get<std::unordered_map<std::string, std::string>>(options["headers"])) {
+        stringstream ss;
+        ss << i.first << ": " << i.second;
+        chunk = curl_slist_append(chunk, ss.str().c_str());
+      }
+      cout << chunk << endl;
+      curl_easy_setopt(handle, CURLOPT_HTTPHEADER, chunk);
+    }
+
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, readBuffer);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(handle, CURLOPT_PRIVATE, readBuffer);
-    curl_easy_setopt(handle, CURLOPT_URL, url.data());
+    curl_easy_setopt(handle, CURLOPT_URL, get<string>(options["url"]).data());
     curl_multi_add_handle(curl_handle, handle);
   }
 
@@ -189,28 +208,30 @@ class LibuvCurlCpp {
     return 0;
   }
 
-  static int request(std::string url, std::function<void()> good_cb) {
+  static int request(request_options options, std::function<void()> good_cb) {
     if (curl_global_init(CURL_GLOBAL_ALL)) {
       fprintf(stderr, "Could not init curl\n");
       return 1;
     }
 
     auto *timer_req = new TimerRequest;
+    auto *handle_socket_data = new HandleSocketData;
+
     CURLM *curl_handle = curl_multi_init();
     timer_req->curl_handle = curl_handle;
     timer_req->done_cb = good_cb;
     timer_req->uv_timer.data = reinterpret_cast<void *>(timer_req);
     uv_timer_init(uv_default_loop(), &timer_req->uv_timer);
-
-    auto *handle_socket_data = new HandleSocketData;
     handle_socket_data->done_cb = good_cb;
     handle_socket_data->curl_handle = curl_handle;
     curl_multi_setopt(curl_handle, CURLMOPT_SOCKETFUNCTION, handleSocket);
     curl_multi_setopt(curl_handle, CURLMOPT_SOCKETDATA, handle_socket_data);
     curl_multi_setopt(curl_handle, CURLMOPT_TIMERFUNCTION, startTimeout);
     curl_multi_setopt(curl_handle, CURLMOPT_TIMERDATA, timer_req);
-    addDownload(url, curl_handle);
+    addDownload(curl_handle, options);
+    return 0;
   }
 };
+}// namespace LibuvCurlCpp
 
 #endif//LIBUVCURLCPP

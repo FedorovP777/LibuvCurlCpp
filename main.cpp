@@ -6,13 +6,20 @@
 #include "LibuvCurlCpp.h"
 #include <iostream>
 #include <uv.h>
+
 using namespace std;
 int main() {
-  std::cout << "Hello, World!" << std::endl;
-  std::unordered_map<std::string, std::string> options;
-  options["method"] = "POST";
 
-  LibuvCurlCpp::request("https://gist.github.com/FedorovP777/6638fc36daf3ce7435eb13378b12da83", []() {
+  LibuvCurlCpp::request_options options;
+  std::unordered_map<std::string, std::string> headers;
+  headers["Accept"] = "*";
+  headers["Host"] = "example.com";
+  options["method"] = "GET";
+  options["url"] = "http://localhost:3000/";
+  options["headers"] = headers;
+  //  options["timeout"] = headers;
+
+  LibuvCurlCpp::LibuvCurlCpp::request(options, []() {
     std::cout << "DONE!!!!!!!!" << std::endl;
   });
   return uv_run(uv_default_loop(), UV_RUN_DEFAULT);
