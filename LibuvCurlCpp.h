@@ -20,23 +20,23 @@ using request_options = std::unordered_map<std::string, std::variant<std::string
 class LibuvCurlCpp {
  public:
   struct HandleSocketData {
-    CURLM *curl_handle;
-    std::function<void()> done_cb;
-    ~HandleSocketData() { cout << "DESCTRUCT" << endl; }
-  };
-  struct TimerRequest {
-    uv_timer_t uv_timer;
-    CURLM *curl_handle;
-    int curl_socket_action_running;
+    CURLM *curl_handle{};
     std::function<void()> done_cb;
   };
 
   struct CurlContext {
-    uv_poll_t poll_handle;
-    CURLM *curl_handle;
-    curl_socket_t sockfd;
+    uv_poll_t poll_handle{};
+    CURLM *curl_handle{};
+    curl_socket_t sockfd{};
     std::function<void()> done_cb;
-    HandleSocketData *handle_socket_data;
+    HandleSocketData *handle_socket_data{};
+  };
+
+  struct TimerRequest {
+    uv_timer_t uv_timer{};
+    CURLM *curl_handle{};
+    int curl_socket_action_running{};
+    std::function<void()> done_cb;
   };
 
   static CurlContext *createCurlContext(curl_socket_t sockfd, HandleSocketData *hsd) {
@@ -58,24 +58,16 @@ class LibuvCurlCpp {
   }
 
   static void addDownload(CURLM *curl_handle, request_options &options) {
-    char filename[50];
-    FILE *file;
     CURL *handle;
     auto *readBuffer = new std::string;
 
-    snprintf(filename, 50, "./%s.download", "test11");
-
-    file = fopen(filename, "wb");
-    if (!file) {
-      fprintf(stderr, "Error opening %s\n", filename);
-      return;
-    }
     handle = curl_easy_init();
 
     if (options.find("method") != options.end() && get<string>(options["method"]) != "GET") {
       curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, get<string>(options["method"]).c_str());
     }
     struct curl_slist *chunk = NULL;
+
     if (options.find("headers") != options.end() && !get<std::unordered_map<std::string, std::string>>(options["headers"]).empty()) {
       for (auto &i : get<std::unordered_map<std::string, std::string>>(options["headers"])) {
         stringstream ss;
@@ -114,9 +106,6 @@ class LibuvCurlCpp {
 
           curl_multi_remove_handle(curl_handle, easy_handle);
           curl_easy_cleanup(easy_handle);
-          if (file) {
-            cout << "111111111111111" << *file << endl;
-          }
 
           if (hsd != nullptr) {
             delete hsd;
@@ -154,7 +143,6 @@ class LibuvCurlCpp {
 
   static int startTimeout(CURLM *multi, long timeout_ms, void *userp) {
     auto *timer_req = reinterpret_cast<TimerRequest *>(userp);
-    cout << "timeout_ms:" << timeout_ms << " " << &timer_req->uv_timer << endl;
     if (timeout_ms < 0) {
       uv_timer_stop(&timer_req->uv_timer);
       uv_close((uv_handle_t *) &timer_req->uv_timer, [](uv_handle_t *handle) {
