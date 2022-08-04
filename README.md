@@ -5,7 +5,8 @@ HTTP clint based on event loop ([libuv](https://github.com/libuv/libuv)) and cur
 How to use: copy LibuvCurlCpp.h in you project.
 Example usage:   
 
-`LibuvCurlCpp::request_options options;
+```
+LibuvCurlCpp::request_options options;
 std::unordered_map<std::string, std::string> headers;   
 headers["Accept"] = "*";   
 headers["Host"] = "example.com";   
@@ -18,6 +19,6 @@ LibuvCurlCpp::LibuvCurlCpp::request(options, []() {
 std::cout << "DONE!!!!!!!!" << std::endl;   
 });   
 return uv_run(uv_default_loop(), UV_RUN_DEFAULT);  
-`   
+```   
 
 Project in development.

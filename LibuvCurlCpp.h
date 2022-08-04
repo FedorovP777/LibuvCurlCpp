@@ -16,19 +16,19 @@
 using namespace std;
 namespace LibuvCurlCpp {
 using request_options = std::unordered_map<std::string, std::variant<std::string, std::unordered_map<std::string, std::string>>>;
-
+using done_cbt = std::function<void(string *)>;
 class LibuvCurlCpp {
  public:
   struct HandleSocketData {
     CURLM *curl_handle{};
-    std::function<void()> done_cb;
+    done_cbt done_cb;
   };
 
   struct CurlContext {
     uv_poll_t poll_handle{};
     CURLM *curl_handle{};
     curl_socket_t sockfd{};
-    std::function<void()> done_cb;
+    done_cbt done_cb;
     HandleSocketData *handle_socket_data{};
   };
 
@@ -36,7 +36,7 @@ class LibuvCurlCpp {
     uv_timer_t uv_timer{};
     CURLM *curl_handle{};
     int curl_socket_action_running{};
-    std::function<void()> done_cb;
+    done_cbt done_cb;
   };
 
   static CurlContext *createCurlContext(curl_socket_t sockfd, HandleSocketData *hsd) {
@@ -77,7 +77,7 @@ class LibuvCurlCpp {
       cout << chunk << endl;
       curl_easy_setopt(handle, CURLOPT_HTTPHEADER, chunk);
     }
-
+    curl_easy_setopt(handle, CURLOPT_HEADER, 1);
     curl_easy_setopt(handle, CURLOPT_WRITEDATA, readBuffer);
     curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(handle, CURLOPT_PRIVATE, readBuffer);
@@ -85,12 +85,15 @@ class LibuvCurlCpp {
     curl_multi_add_handle(curl_handle, handle);
   }
 
-  static void checkMultiInfo(CURLM *curl_handle, std::function<void()> done_cb, HandleSocketData *hsd) {
+  static void checkMultiInfo(CURLM *curl_handle, done_cbt done_cb, HandleSocketData *hsd) {
     CURLMsg *message;
     int pending;
     CURL *easy_handle;
+    long http_code = 0;
 
     while ((message = curl_multi_info_read(curl_handle, &pending))) {
+      cout << "CODE:" << message->msg << endl;
+      cout << "CODE:" << message->data.result << endl;
       switch (message->msg) {
         case CURLMSG_DONE:
           /* Do not use message data after calling curl_multi_remove_handle() and
@@ -103,6 +106,8 @@ class LibuvCurlCpp {
           string *file;
           curl_easy_getinfo(easy_handle, CURLINFO_EFFECTIVE_URL, &done_url);
           curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &file);
+          curl_easy_getinfo(easy_handle, CURLINFO_RESPONSE_CODE, &http_code);
+          cout << http_code << endl;
 
           curl_multi_remove_handle(curl_handle, easy_handle);
           curl_easy_cleanup(easy_handle);
@@ -110,7 +115,7 @@ class LibuvCurlCpp {
           if (hsd != nullptr) {
             delete hsd;
           }
-          done_cb();
+          done_cb(file);
           break;
 
         default:
@@ -196,7 +201,7 @@ class LibuvCurlCpp {
     return 0;
   }
 
-  static int request(request_options options, std::function<void()> good_cb) {
+  static int request(request_options options, done_cbt good_cb) {
     if (curl_global_init(CURL_GLOBAL_ALL)) {
       fprintf(stderr, "Could not init curl\n");
       return 1;
