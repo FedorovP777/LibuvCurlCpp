@@ -9,14 +9,12 @@
 #include <functional>
 #include <iostream>
 #include <sstream>
-#include <stdio.h>
-#include <stdlib.h>
 #include <uv.h>
 #include <variant>
 using namespace std;
 namespace LibuvCurlCpp {
 using request_options = std::unordered_map<std::string, std::variant<std::string, std::unordered_map<std::string, std::string>>>;
-using done_cbt = std::function<void(string *)>;
+using done_cbt = std::function<void(string, string, int, int)>;
 class LibuvCurlCpp {
  public:
   struct HandleSocketData {
@@ -90,10 +88,11 @@ class LibuvCurlCpp {
     int pending;
     CURL *easy_handle;
     long http_code = 0;
-
+    string *responseBody;
+    string headers;
+    std::size_t found;
+    string body;
     while ((message = curl_multi_info_read(curl_handle, &pending))) {
-      cout << "CODE:" << message->msg << endl;
-      cout << "CODE:" << message->data.result << endl;
       switch (message->msg) {
         case CURLMSG_DONE:
           /* Do not use message data after calling curl_multi_remove_handle() and
@@ -103,11 +102,12 @@ class LibuvCurlCpp {
                        curl_easy_cleanup." */
           easy_handle = message->easy_handle;
           char *done_url;
-          string *file;
           curl_easy_getinfo(easy_handle, CURLINFO_EFFECTIVE_URL, &done_url);
-          curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &file);
+          curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &responseBody);
           curl_easy_getinfo(easy_handle, CURLINFO_RESPONSE_CODE, &http_code);
-          cout << http_code << endl;
+
+          if (message->data.result != CURLE_OK)
+            fprintf(stderr, " %s\n", curl_easy_strerror(message->data.result));
 
           curl_multi_remove_handle(curl_handle, easy_handle);
           curl_easy_cleanup(easy_handle);
@@ -115,10 +115,19 @@ class LibuvCurlCpp {
           if (hsd != nullptr) {
             delete hsd;
           }
-          done_cb(file);
+          found = responseBody->find("\r\n\r\n");
+          headers = responseBody->substr(0, found);
+
+          if (found != std::string::npos) {
+            body = responseBody->substr(found + 4);
+          }
+
+          delete responseBody;
+          done_cb(body, headers, message->data.result, http_code);
           break;
 
         default:
+          cout << "ERROR!!!" << endl;
           fprintf(stderr, "CURLMSG default\n");
           break;
       }
@@ -201,7 +210,7 @@ class LibuvCurlCpp {
     return 0;
   }
 
-  static int request(request_options options, done_cbt good_cb) {
+  static int request(request_options options, const done_cbt &done_cb) {
     if (curl_global_init(CURL_GLOBAL_ALL)) {
       fprintf(stderr, "Could not init curl\n");
       return 1;
@@ -212,10 +221,10 @@ class LibuvCurlCpp {
 
     CURLM *curl_handle = curl_multi_init();
     timer_req->curl_handle = curl_handle;
-    timer_req->done_cb = good_cb;
+    timer_req->done_cb = done_cb;
     timer_req->uv_timer.data = reinterpret_cast<void *>(timer_req);
     uv_timer_init(uv_default_loop(), &timer_req->uv_timer);
-    handle_socket_data->done_cb = good_cb;
+    handle_socket_data->done_cb = done_cb;
     handle_socket_data->curl_handle = curl_handle;
     curl_multi_setopt(curl_handle, CURLMOPT_SOCKETFUNCTION, handleSocket);
     curl_multi_setopt(curl_handle, CURLMOPT_SOCKETDATA, handle_socket_data);
