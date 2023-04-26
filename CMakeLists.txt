@@ -20,12 +20,12 @@ target_link_libraries(libuv_curl_cpp PRIVATE ${LINK_LIBS})
 ################################
 # PVS-Studio
 ################################
-include(./PVS-Studio.cmake)
-pvs_studio_add_target(TARGET pvs-studio ALL
-        OUTPUT FORMAT errorfile
-        ANALYZE ${PROJECT_NAME}
-        MODE GA:1,2 OP
-        LOG target.err)
+#include(./PVS-Studio.cmake)
+#pvs_studio_add_target(TARGET pvs-studio ALL
+#        OUTPUT FORMAT errorfile
+#        ANALYZE ${PROJECT_NAME}
+#        MODE GA:1,2 OP
+#        LOG target.err)
 ################################
 # GoogleTest
 ################################
