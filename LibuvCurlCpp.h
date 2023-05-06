@@ -42,11 +42,6 @@ public:
      */
     auto static createResponse(T* payload, const uv_async_cb cb)
     {
-        auto* response = new ::LibuvCurlCpp::response<T*>;
-        uv_async_init(uv_default_loop(), &response->async_cb, cb);
-        response->async_cb.data = (void*)response;
-        response->user_payload = payload;
-        return response;
     }
     struct HandleSocketData {
         CURLM* curl_handle;
@@ -137,16 +132,18 @@ public:
         return size * nmemb;
     }
 
-    static void createRequest(CURLM* curl_handle, request_options& options, curl_slist*& request_headers)
+    static void createRequest(
+        CURLM* curl_multi_handle,
+        CURL* curl_handle,
+        request_options& options,
+        curl_slist*& request_headers,
+        std::string* read_buffer)
     {
-        CURL* handle;
-        auto* read_buffer = new std::string;
-        handle = curl_easy_init();
 
         if (options.find("method") != options.end() && get<std::string>(options["method"]) != "GET") {
-            curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options["method"]).c_str());
-            curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, get<std::string>(options["body"]).c_str());
-            curl_easy_setopt(handle, CURLOPT_POST, 1);
+            curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options["method"]).c_str());
+            curl_easy_setopt(curl_handle, CURLOPT_COPYPOSTFIELDS, get<std::string>(options["body"]).c_str());
+            curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
         }
 
         if (options.find("file_upload") != options.end()) {
@@ -162,26 +159,26 @@ public:
             if (fstat(fileno(fd), &file_info) != 0)
                 throw std::string("Error file read.");
 
-            curl_easy_setopt(handle, CURLOPT_POST, 1);
-            curl_easy_setopt(handle, CURLOPT_UPLOAD, 1L);
-            curl_easy_setopt(handle, CURLOPT_READDATA, fd); // ToDo: replace on async read
-            curl_easy_setopt(handle, CURLOPT_INFILESIZE_LARGE, (curl_off_t)file_info.st_size);
-            curl_easy_setopt(handle, CURLOPT_VERBOSE, 1L);
+            curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
+            curl_easy_setopt(curl_handle, CURLOPT_UPLOAD, 1L);
+            curl_easy_setopt(curl_handle, CURLOPT_READDATA, fd); // ToDo: replace on async read
+            curl_easy_setopt(curl_handle, CURLOPT_INFILESIZE_LARGE, (curl_off_t)file_info.st_size);
+            curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
         }
 
         if (options.find("headers") != options.end() && !get<std::unordered_map<std::string, std::string>>(options["headers"]).empty()) {
-            unorderedMapToCurlSlist(get<std::unordered_map<std::string, std::string>>(options["headers"]),request_headers);
-            curl_easy_setopt(handle, CURLOPT_HTTPHEADER, request_headers);
+            unorderedMapToCurlSlist(get<std::unordered_map<std::string, std::string>>(options["headers"]), request_headers);
+            curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, request_headers);
         }
 
-        curl_easy_setopt(handle, CURLOPT_HEADER, 1);
-        curl_easy_setopt(handle, CURLOPT_TIMEOUT, 1);
-        curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT, 1);
-        curl_easy_setopt(handle, CURLOPT_WRITEDATA, read_buffer);
-        curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, writeCallback);
-        curl_easy_setopt(handle, CURLOPT_PRIVATE, read_buffer);
-        curl_easy_setopt(handle, CURLOPT_URL, get<std::string>(options["url"]).data());
-        curl_multi_add_handle(curl_handle, handle);
+        curl_easy_setopt(curl_handle, CURLOPT_HEADER, 1);
+        curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 1);
+        curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 1);
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, read_buffer);
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, writeCallback);
+        curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, read_buffer);
+        curl_easy_setopt(curl_handle, CURLOPT_URL, get<std::string>(options["url"]).data());
+        curl_multi_add_handle(curl_multi_handle, curl_handle);
     }
 
     static void checkMultiInfo(CURLM* curl_handle, uv_async_t* done_cb, HandleSocketData* hsd)
@@ -353,28 +350,46 @@ public:
 
     static int request(request_options& options, uv_async_cb done_cb, T* user_payload)
     {
-        auto response = LibuvCurlCpp::LibuvCurlCpp::createResponse(user_payload, done_cb);
+        CURLM* curl_multi_handle;
+        CURL* curl_handle;
+        try {
 
-        if (curl_global_init(CURL_GLOBAL_ALL)) {
-            fprintf(stderr, "Could not init curl\n");
-            return 1;
+            auto response = std::make_unique<::LibuvCurlCpp::response<T*>>();
+            uv_async_init(uv_default_loop(), &response->async_cb, done_cb);
+            response->async_cb.data = (void*)response.get();
+            response->user_payload = user_payload;
+
+            if (curl_global_init(CURL_GLOBAL_ALL)) {
+                fprintf(stderr, "Could not init curl\n");
+                return 1;
+            }
+
+            auto timer_req = std::make_unique<TimerRequest>();
+            auto read_buffer = std::make_unique<std::string>();
+            auto handle_socket_data = std::make_unique<HandleSocketData>();
+            curl_multi_handle = curl_multi_init();
+            curl_handle = curl_easy_init();
+            timer_req->curl_handle = curl_multi_handle;
+            timer_req->done_cb = &response->async_cb;
+            timer_req->uv_timer.data = reinterpret_cast<void*>(timer_req.get());
+            uv_timer_init(uv_default_loop(), &timer_req->uv_timer);
+            handle_socket_data->done_cb = &response->async_cb;
+            handle_socket_data->curl_handle = curl_multi_handle;
+            curl_multi_setopt(curl_multi_handle, CURLMOPT_SOCKETFUNCTION, handleSocket);
+            curl_multi_setopt(curl_multi_handle, CURLMOPT_SOCKETDATA, handle_socket_data.get());
+            curl_multi_setopt(curl_multi_handle, CURLMOPT_TIMERFUNCTION, startTimeout);
+            curl_multi_setopt(curl_multi_handle, CURLMOPT_TIMERDATA, timer_req.get());
+            createRequest(curl_multi_handle, curl_handle, options, timer_req->request_headers, read_buffer.get());
+            timer_req.release();
+            handle_socket_data.release();
+            response.release();
+            read_buffer.release();
+            return 0;
+        } catch (...) {
+            curl_multi_cleanup(curl_multi_handle);
+            curl_easy_cleanup(curl_handle);
+            LOG("Error init request")
         }
-
-        auto* timer_req = new TimerRequest;
-        auto* handle_socket_data = new HandleSocketData;
-        CURLM* curl_handle = curl_multi_init();
-        timer_req->curl_handle = curl_handle;
-        timer_req->done_cb = &response->async_cb;
-        timer_req->uv_timer.data = reinterpret_cast<void*>(timer_req);
-        uv_timer_init(uv_default_loop(), &timer_req->uv_timer);
-        handle_socket_data->done_cb = &response->async_cb;
-        handle_socket_data->curl_handle = curl_handle;
-        curl_multi_setopt(curl_handle, CURLMOPT_SOCKETFUNCTION, handleSocket);
-        curl_multi_setopt(curl_handle, CURLMOPT_SOCKETDATA, handle_socket_data);
-        curl_multi_setopt(curl_handle, CURLMOPT_TIMERFUNCTION, startTimeout);
-        curl_multi_setopt(curl_handle, CURLMOPT_TIMERDATA, timer_req);
-        createRequest(curl_handle, options, timer_req->request_headers);
-        return 0;
     }
 };
 } // namespace LibuvCurlCpp
