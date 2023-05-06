@@ -15,7 +15,6 @@
 #include <uv.h>
 #include <variant>
 
-using namespace std;
 namespace LibuvCurlCpp
 
 {
@@ -121,10 +120,10 @@ public:
         return context;
     }
 
-    static void unorderedMapToCurlSlist(const std::unordered_map<string, string>& in, curl_slist* out)
+    static void unorderedMapToCurlSlist(const std::unordered_map<std::string, std::string>& in, curl_slist* out)
     {
         for (auto& i : in) {
-            stringstream ss;
+            std::stringstream ss;
             ss << i.first << ": " << i.second;
             out = curl_slist_append(out, ss.str().c_str());
         }
@@ -144,24 +143,24 @@ public:
         auto* read_buffer = new std::string;
         handle = curl_easy_init();
 
-        if (options.find("method") != options.end() && get<string>(options["method"]) != "GET") {
-            curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, get<string>(options["method"]).c_str());
-            curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, get<string>(options["body"]).c_str());
+        if (options.find("method") != options.end() && get<std::string>(options["method"]) != "GET") {
+            curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options["method"]).c_str());
+            curl_easy_setopt(handle, CURLOPT_COPYPOSTFIELDS, get<std::string>(options["body"]).c_str());
             curl_easy_setopt(handle, CURLOPT_POST, 1);
         }
 
         if (options.find("file_upload") != options.end()) {
-            string filename = get<string>(options["file_upload"]);
+            std::string filename = get<std::string>(options["file_upload"]);
 
             FILE* fd = fopen(filename.c_str(), "rb");
 
             if (!fd)
-                throw string("File not found.");
+                throw std::string("File not found.");
 
             struct stat file_info;
 
             if (fstat(fileno(fd), &file_info) != 0)
-                throw string("Error file read.");
+                throw std::string("Error file read.");
 
             curl_easy_setopt(handle, CURLOPT_POST, 1);
             curl_easy_setopt(handle, CURLOPT_UPLOAD, 1L);
@@ -181,7 +180,7 @@ public:
         curl_easy_setopt(handle, CURLOPT_WRITEDATA, read_buffer);
         curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, writeCallback);
         curl_easy_setopt(handle, CURLOPT_PRIVATE, read_buffer);
-        curl_easy_setopt(handle, CURLOPT_URL, get<string>(options["url"]).data());
+        curl_easy_setopt(handle, CURLOPT_URL, get<std::string>(options["url"]).data());
         curl_multi_add_handle(curl_handle, handle);
     }
 
@@ -191,9 +190,9 @@ public:
         int pending;
         CURL* easy_handle;
         auto http_code = new long;
-        string* responseBody;
-        string headers;
-        string body;
+        std::string* responseBody;
+        std::string headers;
+        std::string body;
         auto* result_date = reinterpret_cast<response<T>*>(done_cb->data);
 
         while ((message = curl_multi_info_read(curl_handle, &pending))) {
@@ -234,7 +233,7 @@ public:
                 break;
 
             default:
-                cout << "ERROR!!!" << endl;
+                std::cout << "ERROR!!!" << std::endl;
                 fprintf(stderr, "CURLMSG default\n");
                 break;
             }
@@ -278,7 +277,6 @@ public:
     static int startTimeout(CURLM* multi, long timeout_ms, void* userp)
     {
         auto* timer_req = reinterpret_cast<TimerRequest*>(userp);
-        cout << "timeout " << timeout_ms << endl;
         if (timeout_ms == -1) {
             LOG("DELETE TIMER")
             uv_timer_stop(&timer_req->uv_timer);
