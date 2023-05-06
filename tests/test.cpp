@@ -19,6 +19,7 @@ TEST(ConfigTest, BasicAssertions)
         options, [](uv_async_t* handle) {
             auto* po = reinterpret_cast<LibuvCurlCpp::response<int*>*>(handle->data);
             EXPECT_EQ(*po->user_payload, 123);
+            EXPECT_EQ(po->http_code, 200);
             EXPECT_EQ(po->body, "HTTP/1.1 200 OK\r\nDate: \r\nServer: \r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 11\r\n\r\nHello world");
 
             uv_close(reinterpret_cast<uv_handle_t*>(handle), [](uv_handle_t* t) { delete t; });
