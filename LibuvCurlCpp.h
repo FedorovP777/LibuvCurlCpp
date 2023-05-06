@@ -135,19 +135,18 @@ public:
     static void createRequest(
         CURLM* curl_multi_handle,
         CURL* curl_handle,
-        request_options& options,
+        const request_options& options,
         curl_slist*& request_headers,
         std::string* read_buffer)
     {
-
-        if (options.find("method") != options.end() && get<std::string>(options["method"]) != "GET") {
-            curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options["method"]).c_str());
-            curl_easy_setopt(curl_handle, CURLOPT_COPYPOSTFIELDS, get<std::string>(options["body"]).c_str());
+        if (options.find("method") != options.end() && get<std::string>(options.at("method")) != "GET") {
+            curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options.at("method")).c_str());
+            curl_easy_setopt(curl_handle, CURLOPT_COPYPOSTFIELDS, get<std::string>(options.at("body")).c_str());
             curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
         }
 
         if (options.find("file_upload") != options.end()) {
-            std::string filename = get<std::string>(options["file_upload"]);
+            std::string filename = get<std::string>(options.at("file_upload"));
 
             FILE* fd = fopen(filename.c_str(), "rb");
 
@@ -166,8 +165,8 @@ public:
             curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
         }
 
-        if (options.find("headers") != options.end() && !get<std::unordered_map<std::string, std::string>>(options["headers"]).empty()) {
-            unorderedMapToCurlSlist(get<std::unordered_map<std::string, std::string>>(options["headers"]), request_headers);
+        if (options.find("headers") != options.end() && !get<std::unordered_map<std::string, std::string>>(options.at("headers")).empty()) {
+            unorderedMapToCurlSlist(get<std::unordered_map<std::string, std::string>>(options.at("headers")), request_headers);
             curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, request_headers);
         }
 
@@ -177,7 +176,7 @@ public:
         curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, read_buffer);
         curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, writeCallback);
         curl_easy_setopt(curl_handle, CURLOPT_PRIVATE, read_buffer);
-        curl_easy_setopt(curl_handle, CURLOPT_URL, get<std::string>(options["url"]).data());
+        curl_easy_setopt(curl_handle, CURLOPT_URL, get<std::string>(options.at("url")).data());
         curl_multi_add_handle(curl_multi_handle, curl_handle);
     }
 
@@ -186,7 +185,7 @@ public:
         CURLMsg* message;
         int pending;
         CURL* easy_handle;
-        auto http_code = new long;
+        long http_code;
         std::string* responseBody;
         std::string headers;
         std::string body;
@@ -204,7 +203,7 @@ public:
                 char* done_url;
                 curl_easy_getinfo(easy_handle, CURLINFO_EFFECTIVE_URL, &done_url);
                 curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &responseBody);
-                curl_easy_getinfo(easy_handle, CURLINFO_RESPONSE_CODE, http_code);
+                curl_easy_getinfo(easy_handle, CURLINFO_RESPONSE_CODE, &http_code);
 
                 if (message->data.result != CURLE_OK)
                     fprintf(stderr, " %s\n", curl_easy_strerror(message->data.result));
@@ -223,10 +222,8 @@ public:
 
                 //                    delete responseBody;
                 result_date->body = *responseBody;
-                result_date->http_code = *http_code;
-                LOG("send1")
+                result_date->http_code = std::move(http_code);
                 uv_async_send(done_cb);
-                LOG("send2")
                 break;
 
             default:
@@ -348,7 +345,7 @@ public:
         return 0;
     }
 
-    static int request(request_options& options, uv_async_cb done_cb, T* user_payload)
+    static int request(const request_options& options, uv_async_cb done_cb, T* user_payload)
     {
         CURLM* curl_multi_handle;
         CURL* curl_handle;
@@ -388,7 +385,7 @@ public:
         } catch (...) {
             curl_multi_cleanup(curl_multi_handle);
             curl_easy_cleanup(curl_handle);
-            LOG("Error init request")
+            fprintf(stderr, "Error init request\n");
         }
     }
 };
