@@ -10,11 +10,11 @@
 #include <curl/curl.h>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <unordered_map>
 #include <uv.h>
 #include <variant>
-
 namespace LibuvCurlCpp
 
 {
@@ -139,7 +139,7 @@ public:
         curl_slist*& request_headers,
         std::string* read_buffer)
     {
-        if (options.find("method") != options.end() && get<std::string>(options.at("method")) != "GET") {
+        if (options.find("method") != options.end() && get<std::string>(options.at("method")) != "GET" && options.find("body") != options.end()) {
             curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options.at("method")).c_str());
             curl_easy_setopt(curl_handle, CURLOPT_COPYPOSTFIELDS, get<std::string>(options.at("body")).c_str());
             curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
@@ -157,7 +157,7 @@ public:
 
             if (fstat(fileno(fd), &file_info) != 0)
                 throw std::string("Error file read.");
-
+            curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, get<std::string>(options.at("method")).c_str());
             curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
             curl_easy_setopt(curl_handle, CURLOPT_UPLOAD, 1L);
             curl_easy_setopt(curl_handle, CURLOPT_READDATA, fd); // ToDo: replace on async read
@@ -386,6 +386,7 @@ public:
             curl_multi_cleanup(curl_multi_handle);
             curl_easy_cleanup(curl_handle);
             fprintf(stderr, "Error init request\n");
+            throw;
         }
     }
 };
