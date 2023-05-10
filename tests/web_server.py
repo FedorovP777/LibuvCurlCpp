@@ -9,7 +9,6 @@ default_headers = {"Date": "", "Server": ""}
 
 async def test_1(request):
     text = "Hello world"
-
     return web.Response(text=text, headers=default_headers)
 
 

@@ -1,5 +1,5 @@
 #include <iostream>
-#include <memory>
+
 
 extern "C" {
 #include <libavutil/parseutils.h>
@@ -21,10 +21,11 @@ int main()
 
     LibuvCurlCpp::request_options options;
     std::unordered_map<std::string, std::string> headers;
-    headers["Host"] = "ya.ru";
+    headers["Host"] = "localhost";
 
-    options["method"] = "GET";
-    options["url"] = "http://ya.ru/";
+    options["method"] = "POST";
+    options["file_upload"] = "/home/user/test.txt";
+    options["url"] = "http://localhost:8001/";
     options["headers"] = headers;
     auto n = new int(123);
     LibuvCurlCpp::LibuvCurlCpp<int>::request(options, done, n);

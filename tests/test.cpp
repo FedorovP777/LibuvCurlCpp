@@ -20,7 +20,7 @@ TEST(GetMethodTest, BasicAssertions)
             auto* po = reinterpret_cast<LibuvCurlCpp::response<int*>*>(handle->data);
             EXPECT_EQ(*po->user_payload, 123);
             EXPECT_EQ(po->http_code, 200);
-            EXPECT_EQ(po->body, "HTTP/1.1 200 OK\r\nDate: \r\nServer: \r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 11\r\n\r\nHello world");
+            EXPECT_EQ(LibuvCurlCpp::LibuvCurlCpp<int>::parseResponseBody(po->body), "Hello world");
 
             uv_close(reinterpret_cast<uv_handle_t*>(handle), [](uv_handle_t* t) { delete t; });
         },
@@ -49,7 +49,7 @@ TEST(UploadFileTest, BasicAssertions)
             auto* po = reinterpret_cast<LibuvCurlCpp::response<int*>*>(handle->data);
             EXPECT_EQ(*po->user_payload, 123);
             EXPECT_EQ(po->http_code, 200);
-            EXPECT_EQ(po->body, "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nDate: \r\nServer: \r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 10\r\n\r\n0xa7277606");
+            EXPECT_EQ(LibuvCurlCpp::LibuvCurlCpp<int>::parseResponseBody(po->body), "0xa7277606");
 
             uv_close(reinterpret_cast<uv_handle_t*>(handle), [](uv_handle_t* t) { delete t; });
         },

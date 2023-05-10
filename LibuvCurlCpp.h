@@ -180,6 +180,15 @@ public:
         curl_multi_add_handle(curl_multi_handle, curl_handle);
     }
 
+    static std::string_view parseResponseBody(std::string_view httpResponse)
+    {
+        auto startBody = httpResponse.find("\r\n\r\n");
+        if (httpResponse.substr(0, startBody) == "HTTP/1.1 100 Continue") {
+            startBody = httpResponse.find("\r\n\r\n", 22);
+        }
+        return httpResponse.substr(startBody + 4);
+    }
+
     static void checkMultiInfo(CURLM* curl_handle, uv_async_t* done_cb, HandleSocketData* hsd)
     {
         CURLMsg* message;
@@ -211,16 +220,6 @@ public:
                 curl_multi_remove_handle(curl_handle, easy_handle);
                 curl_easy_cleanup(easy_handle);
                 curl_multi_cleanup(curl_handle);
-
-                //                    found = responseBody->find("\r\n\r\n");
-                //                    headers = responseBody->substr(0, found);
-                //
-                //                    if (found != std::string::npos)
-                //                    {
-                //                        body = responseBody->substr(found + 4);
-                //                    }
-
-                //                    delete responseBody;
                 result_date->body = *responseBody;
                 result_date->http_code = std::move(http_code);
                 uv_async_send(done_cb);
