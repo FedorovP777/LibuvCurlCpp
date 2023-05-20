@@ -8,6 +8,7 @@
 #define LOG(msg) std::cout << __FILE__ << ":" << __LINE__ << " " << msg << std::endl;
 
 #include <curl/curl.h>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -195,7 +196,7 @@ public:
         int pending;
         CURL* easy_handle;
         long http_code;
-        std::string* responseBody;
+        std::string responseBody;
         std::string headers;
         std::string body;
         auto* result_date = reinterpret_cast<response<T>*>(done_cb->data);
