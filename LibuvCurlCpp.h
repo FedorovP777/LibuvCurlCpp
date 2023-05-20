@@ -151,7 +151,7 @@ public:
             FILE* fd = fopen(filename.c_str(), "rb");
 
             if (!fd)
-                throw std::string("File not found.");
+                throw std::system_error(EDOM, std::generic_category(), "File not found.");
 
             struct stat file_info;
 
