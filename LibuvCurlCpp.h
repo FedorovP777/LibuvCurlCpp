@@ -220,7 +220,7 @@ public:
                 curl_multi_remove_handle(curl_handle, easy_handle);
                 curl_easy_cleanup(easy_handle);
                 curl_multi_cleanup(curl_handle);
-                result_date->body = *responseBody;
+                result_date->body = std::move(responseBody);
                 result_date->http_code = std::move(http_code);
                 uv_async_send(done_cb);
                 break;
